@@ -71,7 +71,7 @@ SRCDIR = ../../src
 # BUNDLE=1: the static single-binary bundle.  The core and the four plugins are linked in from
 # BUNDLE_LIBS (archives, in link order); the core API is exported to them through the dynamic list.
 #   BUNDLE_LDLIBS = what "make static-ldlibs" of the core prints, plus SDL2/GL libs the plugins need.
-BUNDLEDIR ?= ../../../mupen64plus-pow2/bundle
+BUNDLEDIR ?= $(firstword $(wildcard ../../../../bundle ../../../mupen64plus-pow2/bundle))
 ifeq ($(BUNDLE), 1)
   POSTFIX := $(POSTFIX)-bundle
 endif
@@ -161,7 +161,7 @@ endif
 ifneq ("$(APIDIR)","")
   CFLAGS += "-I$(APIDIR)"
 else
-  TRYDIR = ../../../mupen64plus-core/src/api
+  TRYDIR = ../../../mupen64plus-core-dento/src/api
   ifneq ("$(wildcard $(TRYDIR)/m64p_types.h)","")
     CFLAGS += -I$(TRYDIR)
   else
