@@ -68,6 +68,13 @@ ifneq ("$(filter pentium i%86,$(HOST_CPU))","")
 endif
 
 SRCDIR = ../../src
+# BUNDLE=1: the static single-binary bundle.  The core and the four plugins are linked in from
+# BUNDLE_LIBS (archives, in link order); the core API is exported to them through the dynamic list.
+#   BUNDLE_LDLIBS = what "make static-ldlibs" of the core prints, plus SDL2/GL libs the plugins need.
+BUNDLEDIR ?= ../../../mupen64plus-pow2/bundle
+ifeq ($(BUNDLE), 1)
+  POSTFIX := $(POSTFIX)-bundle
+endif
 OBJDIR = _obj$(POSTFIX)
 
 # base CFLAGS, LDLIBS, and LDFLAGS
@@ -213,6 +220,12 @@ ifdef PIE
   endif
 endif
 
+ifeq ($(BUNDLE), 1)
+  CFLAGS += -DM64P_BUNDLE -include $(BUNDLEDIR)/rename-ui.h
+  LDFLAGS += -Wl,--dynamic-list=$(BUNDLEDIR)/core_api.list -Wl,--version-script=$(BUNDLEDIR)/core_api.ver -static-libgcc
+  LDLIBS += -Wl,--whole-archive $(BUNDLE_LIBS) -Wl,--no-whole-archive $(BUNDLE_LDLIBS) -Wl,-Bstatic -lstdc++ -Wl,-Bdynamic
+endif
+
 # set installation options
 ifeq ($(PREFIX),)
   PREFIX := /usr/local
@@ -286,7 +299,13 @@ OBJDIRS = $(dir $(OBJECTS))
 $(shell $(MKDIR) $(OBJDIRS))
 
 # build targets
-TARGET = mupen64plus$(POSTFIX)$(EXEEXT)
+# The bundle is named mupen64plus-pow2 so that a normal build cannot clobber it.  Spruce needs the
+# process to be called ./mupen64plus: rename (or copy) it at deploy time.
+ifeq ($(BUNDLE), 1)
+  TARGET = mupen64plus-pow2$(EXEEXT)
+else
+  TARGET = mupen64plus$(POSTFIX)$(EXEEXT)
+endif
 
 targets:
 	@echo "Mupen64Plus-ui-console makefile."
@@ -304,6 +323,7 @@ targets:
 	@echo "    OPTFLAGS=flags == compiler optimization (default: -O3 -flto)"
 	@echo "    WARNFLAGS=flag == compiler warning levels (default: -Wall)"
 	@echo "    PIE=(1|0)      == Force enable/disable of position independent executables"
+	@echo "    BUNDLE=1       == static single-binary bundle (needs BUNDLE_LIBS and BUNDLE_LDLIBS)"
 	@echo "    POSTFIX=name  == String added to the name of the the build (default: '')"
 	@echo "  Install Options:"
 	@echo "    PREFIX=path    == install/uninstall prefix (default: /usr/local)"

@@ -29,6 +29,8 @@
 
 #include <stdio.h>
 
+#include <dlfcn.h>
+
 #include "core_interface.h"
 #include "m64p_common.h"
 #include "m64p_config.h"
@@ -127,11 +129,21 @@ m64p_error AttachCoreLib(const char *CoreLibFilepath)
 
     /* load the DLL */
     m64p_error rval = M64ERR_INTERNAL;
+#ifdef M64P_BUNDLE
+    /* bundle: the core is linked into this executable; its API is exported through --dynamic-list */
+    if (CoreLibFilepath != NULL)
+        DebugMessage(M64MSG_WARNING, "--corelib '%s' ignored: the core is built into this executable", CoreLibFilepath);
+    CoreHandle = dlopen(NULL, RTLD_NOW);
+    if (CoreHandle != NULL)
+        rval = M64ERR_SUCCESS;
+    CoreLibFilepath = "(built-in core)";
+#else
     /* first, try a library path+name that was given on the command-line */
     if (CoreLibFilepath != NULL)
     {
         rval = osal_dynlib_open(&CoreHandle, CoreLibFilepath);
     }
+#endif
     /* then try a library path that was given at compile time */
 #if defined(COREDIR)
     if (rval != M64ERR_SUCCESS || CoreHandle == NULL)

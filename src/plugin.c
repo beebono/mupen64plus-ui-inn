@@ -50,6 +50,7 @@ plugin_map_node g_PluginMap[] = {{M64PLUGIN_GFX,   "Video", NULL, "", NULL, 0 },
                                  {M64PLUGIN_RSP,   "RSP",   NULL, "", NULL, 0 } };
 
 /* local functions */
+#ifndef M64P_BUNDLE
 static m64p_error PluginLoadTry(const char *filepath, int MapIndex)
 {
     /* try to open a shared library at the given filepath */
@@ -104,6 +105,89 @@ static m64p_error PluginLoadTry(const char *filepath, int MapIndex)
     return M64ERR_SUCCESS;
 }
 
+#endif /* !M64P_BUNDLE */
+
+#ifdef M64P_BUNDLE
+/* bundle: the four plugins are linked into the executable; the core's built-in table (CoreStaticPluginHandle) hands out their handles */
+typedef m64p_dynlib_handle (*ptr_CoreStaticPluginHandle)(m64p_plugin_type);
+typedef m64p_function (*ptr_CoreStaticPluginGetProc)(m64p_dynlib_handle, const char *);
+static ptr_CoreStaticPluginGetProc l_StaticGetProc = NULL;
+
+static const char *BundleIgnored(const char *opt, const char *val)
+{
+    if (val != NULL)
+        DebugMessage(M64MSG_WARNING, "%s '%s' ignored: the plugins are built into this executable", opt, val);
+    return val;
+}
+
+m64p_error PluginSearchLoad(m64p_handle ConfigUI)
+{
+    ptr_CoreStaticPluginHandle getHandle =
+        (ptr_CoreStaticPluginHandle) osal_dynlib_getproc(CoreHandle, "CoreStaticPluginHandle");
+    l_StaticGetProc = (ptr_CoreStaticPluginGetProc) osal_dynlib_getproc(CoreHandle, "CoreStaticPluginGetProc");
+    if (getHandle == NULL || l_StaticGetProc == NULL)
+    {
+        DebugMessage(M64MSG_ERROR, "the core has no built-in plugin table (not built with M64P_STATIC_PLUGINS)");
+        return M64ERR_INCOMPATIBLE;
+    }
+    BundleIgnored("--plugindir", g_PluginDir);
+    BundleIgnored("--gfx", g_GfxPlugin);
+    BundleIgnored("--audio", g_AudioPlugin);
+    BundleIgnored("--input", g_InputPlugin);
+    BundleIgnored("--rsp", g_RspPlugin);
+
+    for (int i = 0; i < 4; i++)
+    {
+        m64p_dynlib_handle handle = getHandle(g_PluginMap[i].type);
+        ptr_PluginGetVersion PluginGetVersion = (ptr_PluginGetVersion) l_StaticGetProc(handle, "PluginGetVersion");
+        ptr_PluginStartup PluginStartup = (ptr_PluginStartup) l_StaticGetProc(handle, "PluginStartup");
+        m64p_plugin_type PluginType = (m64p_plugin_type) 0;
+        int PluginVersion = 0;
+        const char *PluginName = NULL;
+        if (handle == NULL || PluginGetVersion == NULL || PluginStartup == NULL)
+        {
+            DebugMessage(M64MSG_ERROR, "no built-in %s plugin", g_PluginMap[i].name);
+            return M64ERR_INPUT_NOT_FOUND;
+        }
+        (*PluginGetVersion)(&PluginType, &PluginVersion, NULL, &PluginName, NULL);
+        if (PluginType != g_PluginMap[i].type)
+        {
+            DebugMessage(M64MSG_ERROR, "built-in %s plugin has the wrong type", g_PluginMap[i].name);
+            return M64ERR_INCOMPATIBLE;
+        }
+        if ((*PluginStartup)(CoreHandle, g_PluginMap[i].name, DebugCallback) != M64ERR_SUCCESS)
+        {
+            DebugMessage(M64MSG_ERROR, "built-in %s plugin '%s' failed to start.", g_PluginMap[i].name, PluginName);
+            return M64ERR_INPUT_NOT_FOUND;
+        }
+        g_PluginMap[i].handle = handle;
+        strcpy(g_PluginMap[i].filename, "(built-in)");
+        g_PluginMap[i].libname = PluginName;
+        g_PluginMap[i].libversion = PluginVersion;
+        DebugMessage(M64MSG_INFO, "using %s plugin: '%s' v%i.%i.%i (built-in)", g_PluginMap[i].name,
+                     PluginName, VERSION_PRINTF_SPLIT(PluginVersion));
+    }
+    return M64ERR_SUCCESS;
+}
+
+m64p_error PluginUnload(void)
+{
+    typedef m64p_error (*ptr_PluginShutdown)(void);
+    for (int i = 0; i < 4; i++)
+    {
+        if (g_PluginMap[i].handle == NULL)
+            continue;
+        ptr_PluginShutdown PluginShutdown = (ptr_PluginShutdown) l_StaticGetProc(g_PluginMap[i].handle, "PluginShutdown");
+        if (PluginShutdown != NULL)
+            (*PluginShutdown)();
+        g_PluginMap[i].handle = NULL;
+        g_PluginMap[i].filename[0] = 0;
+        g_PluginMap[i].libname = NULL;
+        g_PluginMap[i].libversion = 0;
+    }
+    return M64ERR_SUCCESS;
+}
+#else
 /* global functions */
 m64p_error PluginSearchLoad(m64p_handle ConfigUI)
 {
@@ -286,4 +370,4 @@ m64p_error PluginUnload(void)
 
     return M64ERR_SUCCESS;
 }
-
+#endif /* M64P_BUNDLE */
