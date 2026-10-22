@@ -71,8 +71,9 @@ SRCDIR = ../../src
 # BUNDLE=1: the static single-binary bundle.  The core and the four plugins are linked in from
 # BUNDLE_LIBS (archives, in link order); the core API is exported to them through the dynamic list.
 #   BUNDLE_LDLIBS = what "make static-ldlibs" of the core prints, plus SDL2/GL libs the plugins need.
-#   BUNDLE_STDCXX = how libstdc++ is linked (default static; "-lstdc++" where the target has the shared one).
-BUNDLE_STDCXX ?= -Wl,-Bstatic -lstdc++ -Wl,-Bdynamic
+#   BUNDLE_STDCXX = how libstdc++ and libgcc are linked (default static; "-lstdc++" where the target has the shared
+#   ones: a shared libstdc++ needs the versioned symbols of libgcc_s).
+BUNDLE_STDCXX ?= -static-libgcc -Wl,-Bstatic -lstdc++ -Wl,-Bdynamic
 BUNDLEDIR ?= $(firstword $(wildcard ../../../../bundle ../../../mupen64plus-pow2/bundle))
 ifeq ($(BUNDLE), 1)
   POSTFIX := $(POSTFIX)-bundle
@@ -224,7 +225,7 @@ endif
 
 ifeq ($(BUNDLE), 1)
   CFLAGS += -DM64P_BUNDLE -include $(BUNDLEDIR)/rename-ui.h
-  LDFLAGS += -Wl,--dynamic-list=$(BUNDLEDIR)/core_api.list -Wl,--version-script=$(BUNDLEDIR)/core_api.ver -static-libgcc
+  LDFLAGS += -Wl,--dynamic-list=$(BUNDLEDIR)/core_api.list -Wl,--version-script=$(BUNDLEDIR)/core_api.ver
   LDLIBS += -Wl,--whole-archive $(BUNDLE_LIBS) -Wl,--no-whole-archive $(BUNDLE_LDLIBS) $(BUNDLE_STDCXX)
 endif
 
